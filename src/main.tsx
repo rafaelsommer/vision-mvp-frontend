@@ -2,7 +2,7 @@ import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { Activity, Camera, CircleStop, Cpu, Loader2, Play, RotateCcw, Server, ShieldCheck, Sigma, Wifi } from "lucide-react";
-import { BACKEND_URL, BACKEND_WS_URL, FRAME_INTERVAL_MS, FRAME_WIDTH } from "./config";
+import { BACKEND_URL, BACKEND_WS_URL, FRAME_INTERVAL_MS, FRAME_WIDTH, WEBRTC_STREAM_URL } from "./config";
 import type { Detection, DetectionResponse } from "./types";
 import "./styles.css";
 
@@ -24,6 +24,7 @@ function App() {
   const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline">("checking");
   const [streamStatus, setStreamStatus] = useState<"idle" | "starting" | "live" | "stopped">("idle");
   const [socketStatus, setSocketStatus] = useState<"offline" | "connecting" | "online">("offline");
+  const [cameraMode, setCameraMode] = useState<"browser" | "webrtc">("browser");
 
   useEffect(() => {
     fetch(`${BACKEND_URL}/`)
@@ -49,6 +50,17 @@ function App() {
 
   async function startStream() {
     setError(null);
+
+    if (cameraMode === "webrtc") {
+      if (!WEBRTC_STREAM_URL) {
+        setError("Configure VITE_WEBRTC_STREAM_URL para usar camera externa WebRTC.");
+        return;
+      }
+      setStreamStatus("live");
+      setSocketStatus("offline");
+      return;
+    }
+
     setStreamStatus("starting");
     setSocketStatus("connecting");
 
@@ -180,6 +192,13 @@ function App() {
     );
   }
 
+  function changeCameraMode(mode: "browser" | "webrtc") {
+    stopStream();
+    setResult(null);
+    setError(null);
+    setCameraMode(mode);
+  }
+
   return (
     <main className="app-shell">
       <section className="topbar">
@@ -201,12 +220,25 @@ function App() {
             <Camera size={22} />
             <div>
               <h2>Camera ao vivo</h2>
-              <p>O navegador captura frames da camera e envia para o backend detectar em tempo real.</p>
+              <p>Use a camera do navegador para deteccao ou abra um stream WebRTC externo para visualizacao.</p>
             </div>
           </div>
 
+          <div className="mode-tabs">
+            <button className={cameraMode === "browser" ? "active" : ""} type="button" onClick={() => changeCameraMode("browser")}>
+              Navegador
+            </button>
+            <button className={cameraMode === "webrtc" ? "active" : ""} type="button" onClick={() => changeCameraMode("webrtc")}>
+              WebRTC externo
+            </button>
+          </div>
+
           <div className="video-frame">
-            <video ref={videoRef} playsInline muted />
+            {cameraMode === "webrtc" && WEBRTC_STREAM_URL ? (
+              <iframe title="Stream WebRTC externo" src={WEBRTC_STREAM_URL} />
+            ) : (
+              <video ref={videoRef} playsInline muted />
+            )}
             {streamStatus !== "live" && <span>{streamLabel}</span>}
           </div>
           <canvas ref={canvasRef} hidden />
@@ -214,7 +246,7 @@ function App() {
           <div className="control-row">
             <button disabled={streamStatus === "starting" || streamStatus === "live"} onClick={startStream}>
               {streamStatus === "starting" ? <Loader2 className="spin" size={18} /> : <Play size={18} />}
-              {streamStatus === "starting" ? "Iniciando" : "Iniciar camera"}
+              {streamStatus === "starting" ? "Iniciando" : cameraMode === "webrtc" ? "Abrir stream" : "Iniciar camera"}
             </button>
             <button className="secondary-button" disabled={streamStatus !== "live"} onClick={stopStream}>
               <CircleStop size={18} />

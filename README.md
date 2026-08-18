@@ -25,6 +25,7 @@ Copie `.env.example` para `.env` se precisar mudar a URL do backend:
 
 ```env
 VITE_BACKEND_URL=http://127.0.0.1:8000
+VITE_WEBRTC_STREAM_URL=
 ```
 
 Em producao, use a URL publica do backend:
@@ -34,6 +35,16 @@ VITE_BACKEND_URL=https://sua-api-online.com
 ```
 
 Camera no navegador em producao normalmente exige HTTPS.
+
+## WebRTC externo
+
+Para camera IP/RTSP, use um media server como MediaMTX para converter RTSP em WebRTC e configure:
+
+```env
+VITE_WEBRTC_STREAM_URL=https://url-do-mediamtx/camera
+```
+
+Esse stream e para visualizacao. A deteccao/contagem continua no backend.
 
 ## Deploy
 
