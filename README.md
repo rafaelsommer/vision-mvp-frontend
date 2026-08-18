@@ -4,6 +4,8 @@ Cliente React/Vite da plataforma. Ele captura a camera no navegador e envia fram
 
 Toda API, inferencia, modelo e qualquer token ficam no backend.
 
+O contador tambem vem do backend. O frontend apenas exibe os campos `counts` retornados pelo WebSocket.
+
 ## Rodar localmente
 
 ```powershell

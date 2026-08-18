@@ -14,15 +14,16 @@ function App() {
   const timerRef = useRef<number | null>(null);
   const sendingRef = useRef(false);
   const frameIdRef = useRef(0);
+  const resetCounterRef = useRef(false);
+  const sessionIdRef = useRef(
+    typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : String(Date.now()),
+  );
 
   const [result, setResult] = useState<DetectionResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline">("checking");
   const [streamStatus, setStreamStatus] = useState<"idle" | "starting" | "live" | "stopped">("idle");
   const [socketStatus, setSocketStatus] = useState<"offline" | "connecting" | "online">("offline");
-  const [totalDetections, setTotalDetections] = useState(0);
-  const [processedFrames, setProcessedFrames] = useState(0);
-  const [countByClass, setCountByClass] = useState<Record<string, number>>({});
 
   useEffect(() => {
     fetch(`${BACKEND_URL}/`)
@@ -83,7 +84,6 @@ function App() {
           setError(payload.error);
           return;
         }
-        registerDetections(payload.detections ?? []);
         setResult(payload);
       };
 
@@ -124,22 +124,23 @@ function App() {
     setStreamStatus("stopped");
   }
 
-  function registerDetections(detections: Detection[]) {
-    setProcessedFrames((current) => current + 1);
-    setTotalDetections((current) => current + detections.length);
-    setCountByClass((current) => {
-      const next = { ...current };
-      for (const detection of detections) {
-        next[detection.class_name] = (next[detection.class_name] ?? 0) + 1;
-      }
-      return next;
-    });
-  }
-
   function resetCounters() {
-    setTotalDetections(0);
-    setProcessedFrames(0);
-    setCountByClass({});
+    resetCounterRef.current = true;
+    setResult((current) =>
+      current
+        ? {
+            ...current,
+            counts: {
+              session_id: sessionIdRef.current,
+              total_unique: 0,
+              by_class: {},
+              processed_frames: 0,
+              last_frame_total: 0,
+              last_frame_new: 0,
+            },
+          }
+        : current,
+    );
   }
 
   function sendFrame() {
@@ -166,9 +167,14 @@ function App() {
     const frame = canvas.toDataURL("image/jpeg", 0.78);
 
     sendingRef.current = true;
+    const resetCounter = resetCounterRef.current;
+    resetCounterRef.current = false;
+
     socket.send(
       JSON.stringify({
+        session_id: sessionIdRef.current,
         frame_id: frameIdRef.current++,
+        reset_counter: resetCounter,
         frame,
       }),
     );
@@ -217,10 +223,11 @@ function App() {
           </div>
 
           <CounterPanel
-            totalDetections={totalDetections}
-            lastFrameDetections={result?.detections.length ?? 0}
-            processedFrames={processedFrames}
-            countByClass={countByClass}
+            totalDetections={result?.counts?.total_unique ?? 0}
+            lastFrameDetections={result?.counts?.last_frame_total ?? 0}
+            lastFrameNew={result?.counts?.last_frame_new ?? 0}
+            processedFrames={result?.counts?.processed_frames ?? 0}
+            countByClass={result?.counts?.by_class ?? {}}
             onReset={resetCounters}
           />
 
@@ -240,7 +247,7 @@ function App() {
             <Metric icon={<Server size={18} />} label="Device" value={result?.device ?? "-"} />
             <Metric icon={<Cpu size={18} />} label="Tempo" value={result ? `${result.inference_ms} ms` : "-"} />
             <Metric icon={<ShieldCheck size={18} />} label="Deteccoes" value={result ? String(result.detections.length) : "-"} />
-            <Metric icon={<Sigma size={18} />} label="Total" value={String(totalDetections)} />
+            <Metric icon={<Sigma size={18} />} label="Total unico" value={String(result?.counts?.total_unique ?? 0)} />
             <Metric icon={<Wifi size={18} />} label="Fluxo" value={streamStatus === "live" ? `${Math.round(1000 / FRAME_INTERVAL_MS)} fps` : "-"} />
           </div>
 
@@ -260,12 +267,14 @@ function App() {
 function CounterPanel({
   totalDetections,
   lastFrameDetections,
+  lastFrameNew,
   processedFrames,
   countByClass,
   onReset,
 }: {
   totalDetections: number;
   lastFrameDetections: number;
+  lastFrameNew: number;
   processedFrames: number;
   countByClass: Record<string, number>;
   onReset: () => void;
@@ -288,6 +297,10 @@ function CounterPanel({
         <div>
           <span>Ultimo frame</span>
           <strong>{lastFrameDetections}</strong>
+        </div>
+        <div>
+          <span>Novos unicos</span>
+          <strong>{lastFrameNew}</strong>
         </div>
         <div>
           <span>Frames processados</span>
@@ -338,6 +351,8 @@ function DetectionTable({ detections }: { detections: Detection[] }) {
           <tr>
             <th>Classe</th>
             <th>Confianca</th>
+            <th>Track</th>
+            <th>Contou</th>
             <th>Bounding box</th>
           </tr>
         </thead>
@@ -346,6 +361,8 @@ function DetectionTable({ detections }: { detections: Detection[] }) {
             <tr key={`${detection.class_id}-${index}`}>
               <td>{detection.class_name}</td>
               <td>{Math.round(detection.confidence * 100)}%</td>
+              <td>{detection.track_id ?? "-"}</td>
+              <td>{detection.counted_as_new ? "sim" : "nao"}</td>
               <td>{detection.bbox.map((value) => value.toFixed(0)).join(", ")}</td>
             </tr>
           ))}

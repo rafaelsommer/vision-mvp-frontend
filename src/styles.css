@@ -397,7 +397,7 @@ button:disabled {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 520px;
+  min-width: 760px;
 }
 
 th,
