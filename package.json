@@ -1,0 +1,23 @@
+{
+  "name": "vision-mvp-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5173 --config vite.config.mjs --configLoader native",
+    "build": "tsc && vite build --config vite.config.mjs --configLoader native",
+    "preview": "vite preview --host 127.0.0.1 --config vite.config.mjs --configLoader native"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "lucide-react": "^0.468.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  }
+}

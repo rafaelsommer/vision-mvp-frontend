@@ -1,0 +1,8 @@
+node_modules/
+.npm-cache/
+dist/
+.vite/
+.env
+.env.local
+npm-debug.log*
+
