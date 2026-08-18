@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: vision-live-frontend
+    env: docker
+    plan: starter
+    envVars:
+      - key: VITE_BACKEND_URL
+        sync: false
+

@@ -43,6 +43,14 @@ input {
   margin-bottom: 22px;
 }
 
+.status-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .eyebrow {
   display: block;
   color: var(--accent-strong);
@@ -93,6 +101,12 @@ p {
   background: #fff4f2;
 }
 
+.status-pill.connecting {
+  color: #8a5a00;
+  border-color: #f1d38a;
+  background: #fff8e6;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(300px, 420px) minmax(0, 1fr);
@@ -101,6 +115,7 @@ p {
 }
 
 .upload-panel,
+.camera-panel,
 .result-panel {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -121,7 +136,8 @@ p {
   flex: 0 0 auto;
 }
 
-.dropzone {
+.dropzone,
+.video-frame {
   display: grid;
   place-items: center;
   width: 100%;
@@ -133,6 +149,30 @@ p {
   background: #f8fbfd;
   color: var(--text-muted);
   font-weight: 700;
+}
+
+.video-frame {
+  position: relative;
+  border-style: solid;
+  background: #101820;
+  color: #dbe7f2;
+}
+
+.video-frame video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.video-frame span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  text-align: center;
+  background: rgba(16, 24, 32, 0.72);
+  font-weight: 800;
 }
 
 .dropzone input {
@@ -167,6 +207,21 @@ button {
   cursor: pointer;
 }
 
+.control-row {
+  display: grid;
+  grid-template-columns: 1fr 120px;
+  gap: 10px;
+}
+
+.secondary-button {
+  color: #17212b;
+  background: #e7edf3;
+}
+
+.secondary-button:hover:not(:disabled) {
+  background: #d5e0ea;
+}
+
 button:hover:not(:disabled) {
   background: var(--accent-strong);
 }
@@ -194,7 +249,7 @@ button:disabled {
 
 .metrics {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -227,6 +282,14 @@ button:disabled {
   border-radius: 8px;
   border: 1px solid var(--line);
   overflow: hidden;
+}
+
+.live-workspace {
+  grid-template-columns: minmax(340px, 520px) minmax(0, 1fr);
+}
+
+.live-result {
+  aspect-ratio: 16 / 9;
 }
 
 .empty-state,
@@ -289,7 +352,16 @@ tr:last-child td {
   }
 
   .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .control-row {
     grid-template-columns: 1fr;
   }
 }
 
+@media (max-width: 520px) {
+  .metrics {
+    grid-template-columns: 1fr;
+  }
+}

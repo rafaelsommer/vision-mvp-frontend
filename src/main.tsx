@@ -1,129 +1,198 @@
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { Activity, Cpu, ImageUp, Loader2, Radar, Server, ShieldCheck } from "lucide-react";
+import { Activity, Camera, CircleStop, Cpu, Loader2, Play, Server, ShieldCheck, Wifi } from "lucide-react";
+import { BACKEND_URL, BACKEND_WS_URL, FRAME_INTERVAL_MS, FRAME_WIDTH } from "./config";
+import type { Detection, DetectionResponse } from "./types";
 import "./styles.css";
 
-type Detection = {
-  class_id: number;
-  class_name: string;
-  confidence: number;
-  bbox: number[];
-};
-
-type DetectionResponse = {
-  filename: string;
-  image_width: number;
-  image_height: number;
-  inference_ms: number;
-  device: string;
-  detections: Detection[];
-  annotated_image_base64: string | null;
-};
-
-const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
-
 function App() {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const socketRef = useRef<WebSocket | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const timerRef = useRef<number | null>(null);
+  const sendingRef = useRef(false);
+  const frameIdRef = useRef(0);
+
   const [result, setResult] = useState<DetectionResponse | null>(null);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline">("checking");
+  const [streamStatus, setStreamStatus] = useState<"idle" | "starting" | "live" | "stopped">("idle");
+  const [socketStatus, setSocketStatus] = useState<"offline" | "connecting" | "online">("offline");
 
   useEffect(() => {
-    fetch(`${API_URL}/`)
+    fetch(`${BACKEND_URL}/`)
       .then((response) => {
         if (!response.ok) throw new Error("API offline");
         setApiStatus("online");
       })
       .catch(() => setApiStatus("offline"));
+
+    return () => stopStream();
   }, []);
-
-  useEffect(() => {
-    return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-    };
-  }, [previewUrl]);
-
-  function handleFileChange(file: File | null) {
-    setResult(null);
-    setError(null);
-    setSelectedFile(file);
-
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl(file ? URL.createObjectURL(file) : null);
-  }
-
-  async function runDetection() {
-    if (!selectedFile) return;
-
-    const formData = new FormData();
-    formData.append("file", selectedFile);
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch(`${API_URL}/detectar`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        throw new Error(payload?.detail ?? "Falha ao processar imagem.");
-      }
-
-      setResult(await response.json());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro inesperado.");
-    } finally {
-      setLoading(false);
-    }
-  }
 
   const annotatedSrc = result?.annotated_image_base64
     ? `data:image/jpeg;base64,${result.annotated_image_base64}`
     : null;
 
+  const streamLabel = useMemo(() => {
+    if (streamStatus === "live") return "camera ao vivo";
+    if (streamStatus === "starting") return "iniciando camera";
+    if (streamStatus === "stopped") return "transmissao parada";
+    return "aguardando camera";
+  }, [streamStatus]);
+
+  async function startStream() {
+    setError(null);
+    setStreamStatus("starting");
+    setSocketStatus("connecting");
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: "environment",
+        },
+        audio: false,
+      });
+
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+
+      const socket = new WebSocket(BACKEND_WS_URL);
+      socketRef.current = socket;
+
+      socket.onopen = () => {
+        setSocketStatus("online");
+        setStreamStatus("live");
+        timerRef.current = window.setInterval(sendFrame, FRAME_INTERVAL_MS);
+      };
+
+      socket.onmessage = (event) => {
+        sendingRef.current = false;
+        const payload = JSON.parse(event.data);
+        if (payload.error) {
+          setError(payload.error);
+          return;
+        }
+        setResult(payload);
+      };
+
+      socket.onerror = () => {
+        sendingRef.current = false;
+        setSocketStatus("offline");
+        setError("Nao foi possivel conectar ao WebSocket do backend.");
+      };
+
+      socket.onclose = () => {
+        sendingRef.current = false;
+        setSocketStatus("offline");
+      };
+    } catch (err) {
+      stopStream();
+      setError(err instanceof Error ? err.message : "Nao foi possivel iniciar a camera.");
+    }
+  }
+
+  function stopStream() {
+    if (timerRef.current) {
+      window.clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    socketRef.current?.close();
+    socketRef.current = null;
+
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    sendingRef.current = false;
+    setSocketStatus("offline");
+    setStreamStatus("stopped");
+  }
+
+  function sendFrame() {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const socket = socketRef.current;
+
+    if (!video || !canvas || !socket || socket.readyState !== WebSocket.OPEN || sendingRef.current) {
+      return;
+    }
+
+    if (!video.videoWidth || !video.videoHeight) {
+      return;
+    }
+
+    const scale = FRAME_WIDTH / video.videoWidth;
+    canvas.width = FRAME_WIDTH;
+    canvas.height = Math.round(video.videoHeight * scale);
+
+    const context = canvas.getContext("2d");
+    if (!context) return;
+
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const frame = canvas.toDataURL("image/jpeg", 0.78);
+
+    sendingRef.current = true;
+    socket.send(
+      JSON.stringify({
+        frame_id: frameIdRef.current++,
+        frame,
+      }),
+    );
+  }
+
   return (
     <main className="app-shell">
       <section className="topbar">
         <div>
-          <span className="eyebrow">MVP local</span>
-          <h1>Vision MVP</h1>
+          <span className="eyebrow">MVP tempo real</span>
+          <h1>Vision Live</h1>
         </div>
-        <StatusPill status={apiStatus} />
+        <div className="status-row">
+          <StatusPill status={apiStatus} />
+          <span className={`status-pill ${socketStatus}`}>
+            {socketStatus === "online" ? "stream conectado" : "stream offline"}
+          </span>
+        </div>
       </section>
 
-      <section className="workspace">
-        <div className="upload-panel">
+      <section className="workspace live-workspace">
+        <div className="camera-panel">
           <div className="panel-heading">
-            <ImageUp size={22} />
+            <Camera size={22} />
             <div>
-              <h2>Imagem de teste</h2>
-              <p>Envie uma foto para rodar inferencia no backend FastAPI.</p>
+              <h2>Camera ao vivo</h2>
+              <p>O navegador captura frames da camera e envia para o backend detectar em tempo real.</p>
             </div>
           </div>
 
-          <label className="dropzone">
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(event) => handleFileChange(event.target.files?.[0] ?? null)}
-            />
-            {previewUrl ? (
-              <img src={previewUrl} alt="Previa enviada" />
-            ) : (
-              <span>Selecionar imagem</span>
-            )}
-          </label>
+          <div className="video-frame">
+            <video ref={videoRef} playsInline muted />
+            {streamStatus !== "live" && <span>{streamLabel}</span>}
+          </div>
+          <canvas ref={canvasRef} hidden />
 
-          <button disabled={!selectedFile || loading} onClick={runDetection}>
-            {loading ? <Loader2 className="spin" size={18} /> : <Radar size={18} />}
-            {loading ? "Processando" : "Detectar objetos"}
-          </button>
+          <div className="control-row">
+            <button disabled={streamStatus === "starting" || streamStatus === "live"} onClick={startStream}>
+              {streamStatus === "starting" ? <Loader2 className="spin" size={18} /> : <Play size={18} />}
+              {streamStatus === "starting" ? "Iniciando" : "Iniciar camera"}
+            </button>
+            <button className="secondary-button" disabled={streamStatus !== "live"} onClick={stopStream}>
+              <CircleStop size={18} />
+              Parar
+            </button>
+          </div>
 
           {error && <p className="error">{error}</p>}
         </div>
@@ -132,29 +201,22 @@ function App() {
           <div className="panel-heading">
             <Activity size={22} />
             <div>
-              <h2>Resultado</h2>
-              <p>Caixas, classes, confianca e tempo de inferencia.</p>
+              <h2>Deteccao em tempo real</h2>
+              <p>Retorno do WebSocket com classes, confianca, caixas e latencia de inferencia.</p>
             </div>
           </div>
 
           <div className="metrics">
             <Metric icon={<Server size={18} />} label="Device" value={result?.device ?? "-"} />
-            <Metric
-              icon={<Cpu size={18} />}
-              label="Tempo"
-              value={result ? `${result.inference_ms} ms` : "-"}
-            />
-            <Metric
-              icon={<ShieldCheck size={18} />}
-              label="Deteccoes"
-              value={result ? String(result.detections.length) : "-"}
-            />
+            <Metric icon={<Cpu size={18} />} label="Tempo" value={result ? `${result.inference_ms} ms` : "-"} />
+            <Metric icon={<ShieldCheck size={18} />} label="Deteccoes" value={result ? String(result.detections.length) : "-"} />
+            <Metric icon={<Wifi size={18} />} label="Fluxo" value={streamStatus === "live" ? `${Math.round(1000 / FRAME_INTERVAL_MS)} fps` : "-"} />
           </div>
 
           {annotatedSrc ? (
-            <img className="annotated-image" src={annotatedSrc} alt="Imagem com deteccoes" />
+            <img className="annotated-image live-result" src={annotatedSrc} alt="Frame com deteccoes" />
           ) : (
-            <div className="empty-state">A imagem anotada aparece aqui depois do processamento.</div>
+            <div className="empty-state live-result">O frame anotado aparece aqui quando a camera estiver transmitindo.</div>
           )}
 
           <DetectionTable detections={result?.detections ?? []} />
@@ -181,7 +243,7 @@ function Metric({ icon, label, value }: { icon: ReactNode; label: string; value:
 
 function DetectionTable({ detections }: { detections: Detection[] }) {
   if (detections.length === 0) {
-    return <div className="empty-table">Nenhuma deteccao carregada.</div>;
+    return <div className="empty-table">Nenhuma deteccao recebida.</div>;
   }
 
   return (
