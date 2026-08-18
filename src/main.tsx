@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { Activity, Camera, CircleStop, Cpu, Loader2, Play, Server, ShieldCheck, Wifi } from "lucide-react";
+import { Activity, Camera, CircleStop, Cpu, Loader2, Play, RotateCcw, Server, ShieldCheck, Sigma, Wifi } from "lucide-react";
 import { BACKEND_URL, BACKEND_WS_URL, FRAME_INTERVAL_MS, FRAME_WIDTH } from "./config";
 import type { Detection, DetectionResponse } from "./types";
 import "./styles.css";
@@ -20,6 +20,9 @@ function App() {
   const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline">("checking");
   const [streamStatus, setStreamStatus] = useState<"idle" | "starting" | "live" | "stopped">("idle");
   const [socketStatus, setSocketStatus] = useState<"offline" | "connecting" | "online">("offline");
+  const [totalDetections, setTotalDetections] = useState(0);
+  const [processedFrames, setProcessedFrames] = useState(0);
+  const [countByClass, setCountByClass] = useState<Record<string, number>>({});
 
   useEffect(() => {
     fetch(`${BACKEND_URL}/`)
@@ -80,6 +83,7 @@ function App() {
           setError(payload.error);
           return;
         }
+        registerDetections(payload.detections ?? []);
         setResult(payload);
       };
 
@@ -118,6 +122,24 @@ function App() {
     sendingRef.current = false;
     setSocketStatus("offline");
     setStreamStatus("stopped");
+  }
+
+  function registerDetections(detections: Detection[]) {
+    setProcessedFrames((current) => current + 1);
+    setTotalDetections((current) => current + detections.length);
+    setCountByClass((current) => {
+      const next = { ...current };
+      for (const detection of detections) {
+        next[detection.class_name] = (next[detection.class_name] ?? 0) + 1;
+      }
+      return next;
+    });
+  }
+
+  function resetCounters() {
+    setTotalDetections(0);
+    setProcessedFrames(0);
+    setCountByClass({});
   }
 
   function sendFrame() {
@@ -194,6 +216,14 @@ function App() {
             </button>
           </div>
 
+          <CounterPanel
+            totalDetections={totalDetections}
+            lastFrameDetections={result?.detections.length ?? 0}
+            processedFrames={processedFrames}
+            countByClass={countByClass}
+            onReset={resetCounters}
+          />
+
           {error && <p className="error">{error}</p>}
         </div>
 
@@ -210,6 +240,7 @@ function App() {
             <Metric icon={<Server size={18} />} label="Device" value={result?.device ?? "-"} />
             <Metric icon={<Cpu size={18} />} label="Tempo" value={result ? `${result.inference_ms} ms` : "-"} />
             <Metric icon={<ShieldCheck size={18} />} label="Deteccoes" value={result ? String(result.detections.length) : "-"} />
+            <Metric icon={<Sigma size={18} />} label="Total" value={String(totalDetections)} />
             <Metric icon={<Wifi size={18} />} label="Fluxo" value={streamStatus === "live" ? `${Math.round(1000 / FRAME_INTERVAL_MS)} fps` : "-"} />
           </div>
 
@@ -223,6 +254,60 @@ function App() {
         </div>
       </section>
     </main>
+  );
+}
+
+function CounterPanel({
+  totalDetections,
+  lastFrameDetections,
+  processedFrames,
+  countByClass,
+  onReset,
+}: {
+  totalDetections: number;
+  lastFrameDetections: number;
+  processedFrames: number;
+  countByClass: Record<string, number>;
+  onReset: () => void;
+}) {
+  const classes = Object.entries(countByClass).sort((a, b) => b[1] - a[1]);
+
+  return (
+    <section className="counter-panel">
+      <div className="counter-header">
+        <div>
+          <span>Contador acumulado</span>
+          <strong>{totalDetections}</strong>
+        </div>
+        <button className="icon-button" type="button" onClick={onReset} aria-label="Zerar contador">
+          <RotateCcw size={17} />
+        </button>
+      </div>
+
+      <div className="counter-grid">
+        <div>
+          <span>Ultimo frame</span>
+          <strong>{lastFrameDetections}</strong>
+        </div>
+        <div>
+          <span>Frames processados</span>
+          <strong>{processedFrames}</strong>
+        </div>
+      </div>
+
+      {classes.length > 0 ? (
+        <div className="class-counter-list">
+          {classes.map(([className, count]) => (
+            <div key={className}>
+              <span>{className}</span>
+              <strong>{count}</strong>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="counter-empty">As classes detectadas aparecem aqui.</p>
+      )}
+    </section>
   );
 }
 

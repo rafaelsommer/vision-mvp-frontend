@@ -207,6 +207,18 @@ button {
   cursor: pointer;
 }
 
+.icon-button {
+  width: 40px;
+  min-height: 40px;
+  margin-top: 0;
+  background: #e7edf3;
+  color: #17212b;
+}
+
+.icon-button:hover:not(:disabled) {
+  background: #d5e0ea;
+}
+
 .control-row {
   display: grid;
   grid-template-columns: 1fr 120px;
@@ -247,9 +259,84 @@ button:disabled {
   font-weight: 700;
 }
 
+.counter-panel {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #fbfdff;
+}
+
+.counter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.counter-header span,
+.counter-grid span,
+.class-counter-list span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.counter-header strong {
+  display: block;
+  color: #17212b;
+  font-size: 2.4rem;
+  line-height: 1;
+}
+
+.counter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.counter-grid div,
+.class-counter-list div {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #ffffff;
+}
+
+.counter-grid strong,
+.class-counter-list strong {
+  display: block;
+  margin-top: 3px;
+  color: #17212b;
+  font-size: 1.1rem;
+}
+
+.class-counter-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.class-counter-list div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.counter-empty {
+  margin-top: 10px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+}
+
 .metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -362,6 +449,10 @@ tr:last-child td {
 
 @media (max-width: 520px) {
   .metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .counter-grid {
     grid-template-columns: 1fr;
   }
 }
